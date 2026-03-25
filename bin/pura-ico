@@ -1,0 +1,220 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift(File.join("/tmp/pure-png", "lib"))
+require_relative "../lib/pure-ico"
+
+def usage
+  puts <<~USAGE
+    Usage: pure-ico <command> [options]
+
+    Commands:
+      decode <input.ico> [options]   Decode an ICO/CUR file
+        --info                       Show image metadata
+        --out <file>                 Write raw RGB data to file
+
+      encode <input.rgb> [options]   Encode raw RGB data to ICO
+        --width <n>                  Image width (required)
+        --height <n>                 Image height (required)
+        --sizes <s1,s2,...>          Generate multiple sizes (e.g. 16,32,48)
+        --out <file>                 Output ICO file (required)
+
+      resize <input.ico> [options]   Resize an ICO image
+        --width <n>                  Target width
+        --height <n>                 Target height
+        --fit <W>x<H>               Fit within bounds (maintain aspect ratio)
+        --fill <W>x<H>              Fill exact size (crop to fit)
+        --interpolation <type>       bilinear or nearest (default: bilinear)
+        --out <file>                 Output ICO file (required)
+
+      benchmark <input.ico>          Benchmark decoding
+
+      version                        Show version
+  USAGE
+  exit 1
+end
+
+def cmd_decode(args)
+  input = nil
+  info_only = false
+  output = nil
+
+  i = 0
+  while i < args.size
+    case args[i]
+    when "--info"
+      info_only = true
+    when "--out"
+      i += 1
+      output = args[i]
+    else
+      input = args[i]
+    end
+    i += 1
+  end
+
+  usage unless input
+
+  unless File.exist?(input)
+    $stderr.puts "Error: file not found: #{input}"
+    exit 1
+  end
+
+  start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  image = Pure::Ico.decode(input)
+  elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+
+  if info_only
+    puts "File:   #{input}"
+    puts "Width:  #{image.width}"
+    puts "Height: #{image.height}"
+    puts "Pixels: #{image.width * image.height}"
+    puts "Size:   #{File.size(input)} bytes"
+    puts "Decode: #{'%.3f' % elapsed}s"
+  elsif output
+    File.binwrite(output, image.pixels)
+    puts "Wrote #{image.pixels.bytesize} bytes of raw RGB to #{output}"
+    puts "Decode time: #{'%.3f' % elapsed}s"
+  else
+    puts "Decoded #{input}: #{image.width}x#{image.height} in #{'%.3f' % elapsed}s"
+  end
+end
+
+def cmd_encode(args)
+  input = nil
+  width = nil
+  height = nil
+  sizes = nil
+  output = nil
+
+  i = 0
+  while i < args.size
+    case args[i]
+    when "--width"
+      i += 1; width = args[i].to_i
+    when "--height"
+      i += 1; height = args[i].to_i
+    when "--sizes"
+      i += 1; sizes = args[i].split(",").map(&:to_i)
+    when "--out"
+      i += 1; output = args[i]
+    else
+      input = args[i]
+    end
+    i += 1
+  end
+
+  unless input && width && height && output
+    $stderr.puts "Error: encode requires input file, --width, --height, and --out"
+    usage
+  end
+
+  unless File.exist?(input)
+    $stderr.puts "Error: file not found: #{input}"
+    exit 1
+  end
+
+  raw = File.binread(input)
+  image = Pure::Ico::Image.new(width, height, raw)
+
+  images = if sizes
+    sizes.map { |s| image.resize(s, s) }
+  else
+    [image]
+  end
+
+  start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  size = Pure::Ico.encode(images, output)
+  elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+
+  puts "Encoded #{images.size} image(s) to #{output} (#{size} bytes) in #{'%.3f' % elapsed}s"
+end
+
+def cmd_resize(args)
+  input = nil
+  width = nil
+  height = nil
+  fit = nil
+  fill = nil
+  interpolation = :bilinear
+  output = nil
+
+  i = 0
+  while i < args.size
+    case args[i]
+    when "--width"
+      i += 1; width = args[i].to_i
+    when "--height"
+      i += 1; height = args[i].to_i
+    when "--fit"
+      i += 1; fit = args[i]
+    when "--fill"
+      i += 1; fill = args[i]
+    when "--interpolation"
+      i += 1
+      interpolation = args[i] == "nearest" ? :nearest : :bilinear
+    when "--out"
+      i += 1; output = args[i]
+    else
+      input = args[i]
+    end
+    i += 1
+  end
+
+  unless input && output
+    $stderr.puts "Error: resize requires input file and --out"
+    usage
+  end
+
+  unless File.exist?(input)
+    $stderr.puts "Error: file not found: #{input}"
+    exit 1
+  end
+
+  start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  image = Pure::Ico.decode(input)
+
+  if fit
+    fw, fh = fit.split("x").map(&:to_i)
+    resized = image.resize_fit(fw, fh, interpolation: interpolation)
+  elsif fill
+    fw, fh = fill.split("x").map(&:to_i)
+    resized = image.resize_fill(fw, fh, interpolation: interpolation)
+  elsif width && height
+    resized = image.resize(width, height, interpolation: interpolation)
+  else
+    $stderr.puts "Error: specify --width/--height, --fit, or --fill"
+    usage
+  end
+
+  size = Pure::Ico.encode([resized], output)
+  elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+
+  puts "Resized #{image.width}x#{image.height} -> #{resized.width}x#{resized.height} to #{output} (#{size} bytes) in #{'%.3f' % elapsed}s"
+end
+
+def cmd_benchmark(args)
+  input = args[0]
+  usage unless input
+
+  require_relative "../benchmark/decode_benchmark"
+  DecodeBenchmark.run(input)
+end
+
+case ARGV[0]
+when "decode"
+  cmd_decode(ARGV[1..])
+when "encode"
+  cmd_encode(ARGV[1..])
+when "resize"
+  cmd_resize(ARGV[1..])
+when "benchmark"
+  cmd_benchmark(ARGV[1..])
+when "version", "--version", "-v"
+  puts "pure-ico #{Pure::Ico::VERSION}"
+when nil, "help", "--help", "-h"
+  usage
+else
+  $stderr.puts "Unknown command: #{ARGV[0]}"
+  usage
+end
