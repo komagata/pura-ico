@@ -1,6 +1,6 @@
 # pura-ico
 
-A pure Ruby ICO decoder/encoder with zero C extension dependencies.
+A pure Ruby ICO decoder/encoder without additional image-processing libraries.
 
 Part of the **pura-*** series — pure Ruby image codec gems.
 
@@ -10,7 +10,7 @@ Part of the **pura-*** series — pure Ruby image codec gems.
 - Handles both BMP-style and PNG-style icon entries
 - Multiple icon sizes in a single file
 - Image resizing (bilinear / nearest-neighbor / fit / fill)
-- No native extensions, no FFI, no external dependencies
+- No image-specific native extension or FFI dependency
 - CLI tool included
 
 ## Installation
@@ -47,7 +47,6 @@ pura-ico decode favicon.ico --info
 ## Why pure Ruby?
 
 - **`gem install` and go** — no `brew install`, no `apt install`, no C compiler needed
-- **Works everywhere Ruby works** — CRuby, ruby.wasm, JRuby, TruffleRuby
 - **Both BMP and PNG entries** — handles all common ICO formats
 - **Part of pura-\*** — convert between JPEG, PNG, BMP, GIF, TIFF, WebP, ICO seamlessly
 
@@ -63,6 +62,12 @@ pura-ico decode favicon.ico --info
 | **pura-ico** | ICO | ✅ Available |
 | [pura-webp](https://github.com/komagata/pura-webp) | WebP | ✅ Available |
 | [pura-image](https://github.com/komagata/pura-image) | All formats | ✅ Available |
+
+## Pixel model and limitations
+
+Images contain 8-bit RGB pixels. Decoded pixels are RGB and do not retain transparency. CUR input can be decoded, but the encoder writes ICO only and has no CUR hotspot API.
+
+`crop(x, y, width, height)` requires integer coordinates, positive dimensions, and a region entirely inside the image; invalid regions raise `ArgumentError`.
 
 ## License
 
