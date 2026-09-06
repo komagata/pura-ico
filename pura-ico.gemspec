@@ -17,7 +17,7 @@ Gem::Specification.new do |spec|
   spec.bindir = "bin"
   spec.executables = ["pura-ico"]
 
-  spec.add_dependency "pura-png", "~> 0.1"
+  spec.add_dependency "pura-png", "~> 0.1", ">= 0.1.1"
 
   spec.add_development_dependency "minitest", "~> 5.0"
   spec.add_development_dependency "rake", "~> 13.0"
